@@ -1070,6 +1070,7 @@ export class InteractiveMode {
 
 		// Render initial messages AFTER showing loaded resources
 		this.renderInitialMessages();
+		this.scheduleLateToolRegistrationRerender();
 
 		// Set up theme file watcher
 		onThemeChange(() => {
@@ -4112,6 +4113,37 @@ export class InteractiveMode {
 			const times = compactionCount === 1 ? "1 time" : `${compactionCount} times`;
 			this.showStatus(`Session compacted ${times}`);
 		}
+	}
+
+	/**
+	 * Extensions may register tools after the first render: MCP connects its servers in the background
+	 * so startup is not blocked, and the first prompt waits for the connections. Tool call components
+	 * capture their definition at construction, so tool calls rendered before their definition is
+	 * registered fall back to full-output display and never re-render. Re-render the transcript once
+	 * the missing definitions appear, while the session is idle.
+	 */
+	private scheduleLateToolRegistrationRerender(): void {
+		const missing = new Set<string>();
+		for (const entry of this.sessionManager.buildContextEntries()) {
+			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+			for (const content of entry.message.content) {
+				if (content.type === "toolCall" && !this.getRegisteredToolDefinition(content.name)) {
+					missing.add(content.name);
+				}
+			}
+		}
+		if (missing.size === 0) return;
+		const timer = setInterval(() => {
+			if (![...missing].every((name) => this.getRegisteredToolDefinition(name) !== undefined)) return;
+			clearInterval(timer);
+			if (this.session.isIdle && !this.streamingComponent) {
+				this.chatContainer.clear();
+				this.renderSessionEntries(this.sessionManager.buildContextEntries());
+				this.renderProjectTrustWarningIfNeeded();
+			}
+		}, 500);
+		timer.unref();
+		setTimeout(() => clearInterval(timer), 15_000).unref();
 	}
 
 	private renderProjectTrustWarningIfNeeded(): void {
