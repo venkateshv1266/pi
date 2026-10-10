@@ -181,6 +181,12 @@
         }
       }
     },
+    "maxAutoContinuations": {
+      "type": "number",
+      "description": "Maximum same-run continuations per run when an extension aborts with a continuation (0 disables).",
+      "minimum": 0,
+      "default": 3
+    },
     "hideThinkingBlock": {
       "type": "boolean",
       "default": false
